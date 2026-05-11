@@ -436,7 +436,311 @@
     const trait = pick(DATA.traits);
     const prophecy = pick(DATA.prophecies);
     const rank = pick(DATA.ranks);
-    return { type, score, depth, lint, trait, prophecy, rank };
+    const symmetry = parseFloat(rand(80, 99).toFixed(1));
+    return { type, score, depth, lint, trait, prophecy, rank, symmetry };
+  }
+
+  // ─── RESULT IMAGE ──────────────────────────────────────────────
+  function drawResultImage(r) {
+    const el = els.resultCanvas;
+    if (!el) return;
+    const dpr = window.devicePixelRatio || 1;
+    const cW = el.offsetWidth || 300;
+    const cH = el.offsetHeight || 210;
+    el.width = cW * dpr;
+    el.height = cH * dpr;
+    const c = el.getContext('2d');
+    c.scale(dpr, dpr);
+    const W = cW, H = cH;
+
+    // Background
+    c.fillStyle = '#000c18';
+    c.fillRect(0, 0, W, H);
+
+    // Dot grid
+    c.fillStyle = 'rgba(0, 200, 255, 0.07)';
+    for (let gx = 12; gx < W; gx += 18) {
+      for (let gy = 12; gy < H; gy += 18) {
+        c.fillRect(gx, gy, 1, 1);
+      }
+    }
+
+    // Scan-line texture
+    for (let y = 0; y < H; y += 4) {
+      c.fillStyle = 'rgba(0, 255, 180, 0.022)';
+      c.fillRect(0, y, W, 2);
+    }
+
+    // ── Header strip ──────────────────────────────────────────
+    const HEADER_H = 22;
+    c.fillStyle = 'rgba(0, 255, 180, 0.05)';
+    c.fillRect(0, 0, W, HEADER_H);
+    c.strokeStyle = 'rgba(0, 255, 180, 0.18)';
+    c.lineWidth = 1;
+    c.setLineDash([]);
+    c.beginPath();
+    c.moveTo(0, HEADER_H);
+    c.lineTo(W, HEADER_H);
+    c.stroke();
+
+    const scanId = 'BBS#' + Math.floor(Math.random() * 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+    const now = new Date();
+    const ts = [now.getHours(), now.getMinutes(), now.getSeconds()]
+      .map(n => String(n).padStart(2, '0')).join(':');
+
+    c.font = '9px "Courier New"';
+    c.textBaseline = 'middle';
+    const hcy = HEADER_H / 2;
+
+    c.fillStyle = 'rgba(0, 255, 180, 0.55)';
+    c.textAlign = 'left';
+    c.fillText(scanId, 8, hcy);
+
+    c.fillStyle = 'rgba(0, 200, 255, 0.55)';
+    c.textAlign = 'center';
+    c.fillText(ts, W / 2, hcy);
+
+    const typeColor = r.type === 'Outie' ? '#ff4d8d' : r.type === 'Enigmatic' ? '#aa88ff' : '#00ffb4';
+    c.fillStyle = typeColor;
+    c.textAlign = 'right';
+    c.fillText(r.type.toUpperCase(), W - 8, hcy);
+
+    // ── Navel illustration ────────────────────────────────────
+    const ILL_H = 118;
+    const ILL_Y = HEADER_H;
+    const cx = W / 2;
+    const cy = ILL_Y + ILL_H / 2;
+
+    c.font = '7px "Courier New"';
+    c.fillStyle = 'rgba(0, 200, 255, 0.28)';
+    c.textAlign = 'left';
+    c.textBaseline = 'top';
+    c.fillText('NAVEL TOPOGRAPHY', 8, ILL_Y + 5);
+
+    if (r.type === 'Innie') drawInnieTopography(c, cx, cy, W, ILL_H, r);
+    else if (r.type === 'Outie') drawOutieTopography(c, cx, cy, W, ILL_H, r);
+    else drawEnigmaticTopography(c, cx, cy, W, ILL_H);
+
+    // ── Metric bars ───────────────────────────────────────────
+    const BARS_Y = ILL_Y + ILL_H;
+    c.strokeStyle = 'rgba(0, 255, 180, 0.14)';
+    c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(0, BARS_Y);
+    c.lineTo(W, BARS_Y);
+    c.stroke();
+
+    const BAR_ROW_H = (H - BARS_Y) / 4;
+    const depthFill = { Shallow: 0.22, Standard: 0.5, Deep: 0.75, Cavernous: 1.0 }[r.depth] ?? 0.5;
+    const lintFill  = { Low: 0.15, Moderate: 0.45, High: 0.75, Legendary: 1.0 }[r.lint] ?? 0.4;
+    const lintColor = lintFill >= 0.75 ? '#ff4d8d' : '#00c8ff';
+
+    const barMetrics = [
+      { label: 'SCORE', fill: parseFloat(r.score) / 100, value: r.score + '/100', color: '#00ffb4' },
+      { label: 'DEPTH', fill: depthFill,                  value: r.depth,          color: '#00c8ff' },
+      { label: 'LINT',  fill: lintFill,                   value: r.lint,           color: lintColor },
+      { label: 'SYM',   fill: r.symmetry / 100,           value: r.symmetry.toFixed(1) + '%', color: '#00ffb4' },
+    ];
+
+    const LBL_W = 36, VAL_W = 50, BPAD = 8;
+    const barW = W - LBL_W - VAL_W - BPAD * 2;
+    c.font = '8px "Courier New"';
+
+    barMetrics.forEach((m, i) => {
+      const rowCy = BARS_Y + i * BAR_ROW_H + BAR_ROW_H / 2;
+      const barX  = BPAD + LBL_W;
+      const barHt = 3;
+
+      c.fillStyle = 'rgba(0, 255, 180, 0.4)';
+      c.textAlign = 'left';
+      c.textBaseline = 'middle';
+      c.fillText(m.label, BPAD, rowCy);
+
+      c.fillStyle = 'rgba(0, 255, 180, 0.08)';
+      c.fillRect(barX, rowCy - barHt / 2, barW, barHt);
+
+      if (m.fill > 0) {
+        const fillW = barW * m.fill;
+        const grad = c.createLinearGradient(barX, 0, barX + fillW, 0);
+        grad.addColorStop(0, m.color + '88');
+        grad.addColorStop(1, m.color);
+        c.fillStyle = grad;
+        c.fillRect(barX, rowCy - barHt / 2, fillW, barHt);
+
+        c.save();
+        c.shadowColor = m.color;
+        c.shadowBlur = 6;
+        c.beginPath();
+        c.arc(barX + fillW, rowCy, 2.5, 0, Math.PI * 2);
+        c.fillStyle = m.color;
+        c.fill();
+        c.restore();
+      }
+
+      c.fillStyle = m.color;
+      c.textAlign = 'right';
+      c.fillText(m.value, W - BPAD, rowCy);
+    });
+  }
+
+  function drawInnieTopography(c, cx, cy, W, H, r) {
+    // Topographic map: concentric ellipses darkening toward center
+    const rings = [
+      { rx: W * 0.34, ry: H * 0.40, fill: '#c4956a' },
+      { rx: W * 0.24, ry: H * 0.28, fill: '#9a6840' },
+      { rx: W * 0.16, ry: H * 0.19, fill: '#5a3820' },
+      { rx: W * 0.09, ry: H * 0.11, fill: '#2a1408' },
+      { rx: W * 0.04, ry: H * 0.05, fill: '#080200' },
+    ];
+    rings.forEach(l => {
+      c.beginPath();
+      c.ellipse(cx, cy, l.rx, l.ry, 0, 0, Math.PI * 2);
+      c.fillStyle = l.fill;
+      c.fill();
+    });
+
+    // Rim highlight
+    c.beginPath();
+    c.ellipse(cx, cy, W * 0.24, H * 0.28, 0, 0, Math.PI * 2);
+    c.strokeStyle = 'rgba(255, 210, 150, 0.2)';
+    c.lineWidth = 1.5;
+    c.setLineDash([]);
+    c.stroke();
+
+    // Topographic contour lines
+    c.strokeStyle = 'rgba(0, 255, 180, 0.18)';
+    c.lineWidth = 0.5;
+    c.setLineDash([3, 4]);
+    [0.28, 0.18, 0.10].forEach(rx => {
+      c.beginPath();
+      c.ellipse(cx, cy, W * rx, H * rx * 0.72, 0, 0, Math.PI * 2);
+      c.stroke();
+    });
+    c.setLineDash([]);
+
+    // Center crosshair
+    c.strokeStyle = 'rgba(0, 255, 180, 0.35)';
+    c.lineWidth = 0.5;
+    c.beginPath();
+    c.moveTo(cx - W * 0.07, cy); c.lineTo(cx + W * 0.07, cy);
+    c.moveTo(cx, cy - H * 0.09); c.lineTo(cx, cy + H * 0.09);
+    c.stroke();
+
+    // Depth callout
+    const depthMm = { Shallow: '1.2', Standard: '2.8', Deep: '4.1', Cavernous: '5.9' }[r.depth] ?? '2.8';
+    const ax = cx + W * 0.32;
+    c.strokeStyle = 'rgba(0, 200, 255, 0.45)';
+    c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(cx + W * 0.10, cy);
+    c.lineTo(ax - 4, cy);
+    c.stroke();
+    c.font = '7px "Courier New"';
+    c.fillStyle = 'rgba(0, 200, 255, 0.7)';
+    c.textAlign = 'left';
+    c.textBaseline = 'middle';
+    c.fillText('DEPTH ' + depthMm + 'mm', ax, cy);
+
+    // Label
+    c.font = '7px "Courier New"';
+    c.fillStyle = 'rgba(0, 255, 180, 0.22)';
+    c.textAlign = 'left';
+    c.textBaseline = 'bottom';
+    c.fillText('UMBILICUS FOSSA', 8, cy + H * 0.44);
+  }
+
+  function drawOutieTopography(c, cx, cy, W, H) {
+    // Skin base ellipse
+    c.beginPath();
+    c.ellipse(cx, cy, W * 0.36, H * 0.42, 0, 0, Math.PI * 2);
+    c.fillStyle = '#a07050';
+    c.fill();
+
+    // Bump with radial gradient (bright center = highlight)
+    const grad = c.createRadialGradient(cx - W * 0.02, cy - H * 0.05, 2, cx, cy, W * 0.22);
+    grad.addColorStop(0, '#f0c080');
+    grad.addColorStop(0.35, '#d09060');
+    grad.addColorStop(0.75, '#a06840');
+    grad.addColorStop(1, '#704020');
+    c.beginPath();
+    c.ellipse(cx, cy, W * 0.22, H * 0.26, 0, 0, Math.PI * 2);
+    c.fillStyle = grad;
+    c.fill();
+
+    // Shadow ring
+    c.beginPath();
+    c.ellipse(cx, cy, W * 0.22, H * 0.26, 0, 0, Math.PI * 2);
+    c.strokeStyle = 'rgba(0, 0, 0, 0.35)';
+    c.lineWidth = 2.5;
+    c.setLineDash([]);
+    c.stroke();
+
+    // Contour lines
+    c.strokeStyle = 'rgba(0, 255, 180, 0.18)';
+    c.lineWidth = 0.5;
+    c.setLineDash([3, 4]);
+    [0.30, 0.20].forEach(rx => {
+      c.beginPath();
+      c.ellipse(cx, cy, W * rx, H * rx * 0.80, 0, 0, Math.PI * 2);
+      c.stroke();
+    });
+    c.setLineDash([]);
+
+    // Height callout
+    const ax = cx + W * 0.32;
+    c.strokeStyle = 'rgba(0, 200, 255, 0.45)';
+    c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(cx + W * 0.22, cy);
+    c.lineTo(ax - 4, cy);
+    c.stroke();
+    c.font = '7px "Courier New"';
+    c.fillStyle = 'rgba(0, 200, 255, 0.7)';
+    c.textAlign = 'left';
+    c.textBaseline = 'middle';
+    c.fillText('+3.2mm', ax, cy);
+
+    c.font = '7px "Courier New"';
+    c.fillStyle = 'rgba(255, 77, 141, 0.35)';
+    c.textAlign = 'left';
+    c.textBaseline = 'bottom';
+    c.fillText('PROTRUDING OMPHALOS', 8, cy + H * 0.44);
+  }
+
+  function drawEnigmaticTopography(c, cx, cy, W, H) {
+    const palette = ['#00ffb4', '#00c8ff', '#aa88ff'];
+    for (let i = 5; i > 0; i--) {
+      const angle = (i / 5) * Math.PI * 0.7;
+      const rx = W * (0.08 + i * 0.055);
+      const ry = H * (0.10 + i * 0.038);
+      c.save();
+      c.translate(cx, cy);
+      c.rotate(angle);
+      c.beginPath();
+      c.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+      c.restore();
+      c.strokeStyle = palette[i % 3] + '44';
+      c.lineWidth = 1;
+      c.setLineDash([]);
+      c.stroke();
+    }
+
+    // Center ?
+    c.save();
+    c.shadowColor = '#aa88ff';
+    c.shadowBlur = 14;
+    c.font = 'bold 22px "Courier New"';
+    c.fillStyle = 'rgba(170, 136, 255, 0.75)';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText('?', cx, cy);
+    c.restore();
+
+    c.font = '7px "Courier New"';
+    c.fillStyle = 'rgba(170, 136, 255, 0.35)';
+    c.textAlign = 'left';
+    c.textBaseline = 'bottom';
+    c.fillText('CLASSIFICATION: UNKNOWN', 8, cy + H * 0.44);
   }
 
   function renderResults(r) {
@@ -474,6 +778,7 @@
     });
 
     els.resultsRows.innerHTML = html;
+    setTimeout(() => drawResultImage(r), 60);
   }
 
   // ─── STATE MACHINE ─────────────────────────────────────────────
@@ -526,6 +831,7 @@
       errorDetail: document.getElementById('error-detail'),
       scanAgainBtn: document.getElementById('scan-again-btn'),
       retryBtn: document.getElementById('retry-btn'),
+      resultCanvas: document.getElementById('result-canvas'),
     };
 
     ctx = els.canvas.getContext('2d');
