@@ -116,6 +116,12 @@
   let metalScanActive = false;
   let metalScanEnd = 0;
   let scanTimers = [];
+  let flickerAlpha = 1;
+  const ORBITAL_NODES = [
+    { speed:  0.38, offset: 0,              rFactor: 1.22, sz: 2.5, trail: [] },
+    { speed: -0.22, offset: Math.PI * 0.7,  rFactor: 1.30, sz: 2.0, trail: [] },
+    { speed:  0.55, offset: Math.PI * 1.3,  rFactor: 1.17, sz: 3.0, trail: [] },
+  ];
 
   // ─── UTILS ─────────────────────────────────────────────────────
   function weightedRandom(items) {
@@ -174,32 +180,48 @@
   function drawCornerBrackets(t) {
     const r = baseRadius();
     const cx = W / 2, cy = H / 2;
-    const armLen = r * 0.28;
-    const alpha = 0.6 + 0.4 * Math.sin(t * 1.5);
-    const positions = [
-      [-1, -1, Math.PI * 0.5, 0],
-      [1, -1, Math.PI, Math.PI * 0.5],
-      [1, 1, Math.PI * 1.5, Math.PI],
-      [-1, 1, 0, Math.PI * 1.5],
-    ];
+    const armLen = r * 0.30;
+    const alpha = 0.55 + 0.45 * Math.sin(t * 1.5);
+    const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
 
-    ctx.save();
-    ctx.strokeStyle = `rgba(0, 255, 180, ${alpha})`;
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'square';
-    ctx.setLineDash([]);
-
-    for (const [sx, sy] of positions) {
+    corners.forEach(([sx, sy]) => {
       const bx = cx + sx * r;
       const by = cy + sy * r;
 
+      // Main bracket arms
+      ctx.save();
+      ctx.strokeStyle = `rgba(0, 255, 180, ${alpha})`;
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'square';
+      ctx.setLineDash([]);
+      ctx.shadowColor = `rgba(0, 255, 180, ${alpha * 0.6})`;
+      ctx.shadowBlur = 6;
       ctx.beginPath();
       ctx.moveTo(bx - sx * armLen, by);
       ctx.lineTo(bx, by);
       ctx.lineTo(bx, by - sy * armLen);
       ctx.stroke();
-    }
-    ctx.restore();
+      ctx.restore();
+
+      // Tick marks along arms
+      ctx.save();
+      ctx.strokeStyle = `rgba(0, 255, 180, ${alpha * 0.45})`;
+      ctx.lineWidth = 0.8;
+      ctx.lineCap = 'butt';
+      ctx.setLineDash([]);
+      for (let j = 1; j <= 3; j++) {
+        const frac = j / 4;
+        ctx.beginPath();
+        ctx.moveTo(bx - sx * armLen * frac, by);
+        ctx.lineTo(bx - sx * armLen * frac, by + sy * 4);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(bx, by - sy * armLen * frac);
+        ctx.lineTo(bx - sx * 4, by - sy * armLen * frac);
+        ctx.stroke();
+      }
+      ctx.restore();
+    });
   }
 
   function drawPulseRings() {
@@ -207,37 +229,52 @@
     const cx = W / 2, cy = H / 2;
     const speed = state === STATES.SCANNING ? CONFIG.ringScanSpeed : CONFIG.ringSpeed;
 
-    ctx.save();
     for (const ring of pulseRings) {
       ring.phase += speed;
       if (ring.phase > 1) ring.phase -= 1;
 
       const ringR = r + ring.phase * r * 0.55;
-      const alpha = (1 - ring.phase) * 0.7;
+      const alpha = (1 - ring.phase) * 0.75;
 
+      ctx.save();
+      ctx.shadowColor = `rgba(0, 255, 180, ${alpha * 0.5})`;
+      ctx.shadowBlur = 8;
       ctx.beginPath();
       ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
       ctx.strokeStyle = `rgba(0, 255, 180, ${alpha})`;
       ctx.lineWidth = 1.5;
       ctx.setLineDash([]);
       ctx.stroke();
+      ctx.restore();
     }
-    ctx.restore();
   }
 
-  function drawRotatingRing() {
-    const r = baseRadius() * 1.1;
+  function drawRotatingRings() {
+    const r = baseRadius();
     const cx = W / 2, cy = H / 2;
     rotation += CONFIG.rotationSpeed;
 
+    // Outer ring — CW, dashed cyan
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(rotation);
     ctx.beginPath();
-    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.arc(0, 0, r * 1.12, 0, Math.PI * 2);
     ctx.strokeStyle = 'rgba(0, 200, 255, 0.35)';
     ctx.lineWidth = 1;
-    ctx.setLineDash([10, 7]);
+    ctx.setLineDash([12, 8]);
+    ctx.stroke();
+    ctx.restore();
+
+    // Inner ring — CCW, shorter dashes, green
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(-rotation * 0.65);
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.96, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(0, 255, 180, 0.18)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 15]);
     ctx.stroke();
     ctx.restore();
   }
@@ -305,19 +342,35 @@
 
     ctx.save();
     ctx.beginPath();
-    ctx.arc(cx, cy, r * 0.92, 0, Math.PI * 2);
+    ctx.arc(cx, cy, r * 0.93, 0, Math.PI * 2);
     ctx.clip();
 
-    const grad = ctx.createLinearGradient(cx - r, barY, cx + r, barY);
-    grad.addColorStop(0, 'rgba(0,255,180,0)');
-    grad.addColorStop(0.4, 'rgba(0,255,180,0.6)');
-    grad.addColorStop(0.5, 'rgba(0,255,180,0.9)');
-    grad.addColorStop(0.6, 'rgba(0,255,180,0.6)');
-    grad.addColorStop(1, 'rgba(0,255,180,0)');
+    // Soft wide glow behind the line
+    const glow = ctx.createLinearGradient(cx - r, barY - 16, cx + r, barY + 16);
+    glow.addColorStop(0, 'rgba(0,255,180,0)');
+    glow.addColorStop(0.5, 'rgba(0,255,180,0.09)');
+    glow.addColorStop(1, 'rgba(0,255,180,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(cx - r, barY - 16, r * 2, 32);
 
-    ctx.fillStyle = grad;
-    ctx.fillRect(cx - r, barY - 2, r * 2, 4);
+    // Bright core line
+    const line = ctx.createLinearGradient(cx - r, 0, cx + r, 0);
+    line.addColorStop(0,   'rgba(0,255,180,0)');
+    line.addColorStop(0.25,'rgba(0,255,180,0.7)');
+    line.addColorStop(0.5, 'rgba(200,255,245,1)');
+    line.addColorStop(0.75,'rgba(0,255,180,0.7)');
+    line.addColorStop(1,   'rgba(0,255,180,0)');
+    ctx.fillStyle = line;
+    ctx.fillRect(cx - r, barY - 1.5, r * 2, 3);
     ctx.restore();
+
+    // Screen-wide atmospheric glow at bar height
+    const screenGlow = ctx.createLinearGradient(0, barY - 24, 0, barY + 24);
+    screenGlow.addColorStop(0,   'rgba(0,255,180,0)');
+    screenGlow.addColorStop(0.5, 'rgba(0,255,180,0.04)');
+    screenGlow.addColorStop(1,   'rgba(0,255,180,0)');
+    ctx.fillStyle = screenGlow;
+    ctx.fillRect(0, barY - 24, W, 48);
   }
 
   function drawProgressArc() {
@@ -327,13 +380,36 @@
     scanProgress = Math.min(elapsed / CONFIG.scanDuration, 1);
     const endAngle = -Math.PI / 2 + scanProgress * Math.PI * 2;
 
+    // Dim background track
     ctx.save();
     ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(0, 255, 180, 0.07)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    ctx.stroke();
+    ctx.restore();
+
+    // Progress arc with glow
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 255, 180, 0.7)';
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
     ctx.arc(cx, cy, r, -Math.PI / 2, endAngle);
-    ctx.strokeStyle = 'rgba(0, 255, 180, 0.9)';
+    ctx.strokeStyle = 'rgba(0, 255, 180, 0.95)';
     ctx.lineWidth = 3;
     ctx.setLineDash([]);
     ctx.stroke();
+
+    // Bright tip dot
+    if (scanProgress > 0.01) {
+      const tx = cx + Math.cos(endAngle) * r;
+      const ty = cy + Math.sin(endAngle) * r;
+      ctx.beginPath();
+      ctx.arc(tx, ty, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+    }
     ctx.restore();
   }
 
@@ -386,14 +462,155 @@
     centerTextAlpha = Math.min(centerTextAlpha + 0.05, 1);
 
     const cx = W / 2, cy = H / 2;
+    const isImplant = centerText === 'DETECTING IMPLANTS...';
+    const baseColor = isImplant ? '232, 208, 96' : '0, 255, 180';
+    const glowColor = isImplant ? 'rgba(232,208,96,0.8)' : 'rgba(0,255,180,0.8)';
+
     ctx.save();
     ctx.font = 'bold 13px "Courier New"';
-    ctx.fillStyle = `rgba(0, 255, 180, ${centerTextAlpha})`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.shadowColor = 'rgba(0, 255, 180, 0.8)';
-    ctx.shadowBlur = 12;
-    ctx.fillText(centerText, cx, cy);
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = `rgba(${baseColor}, ${centerTextAlpha})`;
+
+    // Occasional glitch horizontal offset for DETECTING IMPLANTS
+    const offX = isImplant && Math.random() < 0.07 ? (Math.random() - 0.5) * 5 : 0;
+    ctx.fillText(centerText, cx + offX, cy);
+    ctx.restore();
+  }
+
+  function drawScreenVignette() {
+    const grad = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.22, W / 2, H / 2, Math.max(W, H) * 0.72);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.58)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawDepthRings(t) {
+    const cx = W / 2, cy = H / 2;
+    const r = baseRadius();
+    const layers = [
+      { r: r * 1.55, rot:  t * 0.07, color: 'rgba(0,200,255,0.07)', dash: [22, 18], lw: 0.7 },
+      { r: r * 1.35, rot: -t * 0.05, color: 'rgba(0,255,180,0.07)', dash: [10, 24], lw: 0.7 },
+      { r: r * 0.70, rot:  t * 0.11, color: 'rgba(0,200,255,0.09)', dash: [6, 12],  lw: 0.7 },
+    ];
+    layers.forEach(l => {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(l.rot);
+      ctx.beginPath();
+      ctx.arc(0, 0, l.r, 0, Math.PI * 2);
+      ctx.strokeStyle = l.color;
+      ctx.lineWidth = l.lw;
+      ctx.setLineDash(l.dash);
+      ctx.stroke();
+      ctx.restore();
+    });
+  }
+
+  function drawTickRing(t) {
+    const cx = W / 2, cy = H / 2;
+    const r = baseRadius() * 1.20;
+    const rot = t * 0.055;
+    const numTicks = 48;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rot);
+    ctx.setLineDash([]);
+    for (let i = 0; i < numTicks; i++) {
+      const angle = (i / numTicks) * Math.PI * 2;
+      const isMajor = i % 12 === 0;
+      const isMid   = i % 4 === 0;
+      const tickLen = isMajor ? 12 : isMid ? 6 : 3;
+      const alpha   = isMajor ? 0.65 : isMid ? 0.32 : 0.14;
+      const lw      = isMajor ? 1.5 : 0.8;
+      const cos = Math.cos(angle), sin = Math.sin(angle);
+      ctx.beginPath();
+      ctx.moveTo(cos * r, sin * r);
+      ctx.lineTo(cos * (r - tickLen), sin * (r - tickLen));
+      ctx.strokeStyle = `rgba(0, 255, 180, ${alpha})`;
+      ctx.lineWidth = lw;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawOrbitalNodes(t) {
+    const cx = W / 2, cy = H / 2;
+    const r = baseRadius();
+
+    ORBITAL_NODES.forEach(node => {
+      const angle = t * node.speed + node.offset;
+      const nr = r * node.rFactor;
+      const x = cx + Math.cos(angle) * nr;
+      const y = cy + Math.sin(angle) * nr;
+
+      node.trail.push({ x, y });
+      if (node.trail.length > 10) node.trail.shift();
+
+      // Trail (fading)
+      node.trail.forEach((pt, i) => {
+        const a = (i / node.trail.length) * 0.3;
+        const s = node.sz * (i / node.trail.length) * 0.6;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, Math.max(0.5, s), 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(0, 200, 255, ${a})`;
+        ctx.fill();
+      });
+
+      // Node
+      ctx.save();
+      ctx.shadowColor = '#00e0ff';
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(x, y, node.sz, 0, Math.PI * 2);
+      ctx.fillStyle = '#00e0ff';
+      ctx.fill();
+      ctx.restore();
+    });
+  }
+
+  function drawWaveform(t) {
+    const r = baseRadius();
+    const cx = W / 2, cy = H / 2;
+    // Right side of scan zone
+    const wx = cx + r * 1.44;
+    const wh = r * 0.80;
+    const ww = r * 0.20;
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0, 200, 255, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    const steps = 30;
+    for (let i = 0; i <= steps; i++) {
+      const p = i / steps;
+      const wy = cy - wh / 2 + p * wh;
+      const wx2 = wx + Math.sin(p * Math.PI * 4 + t * 2.8) * ww * (0.65 + 0.35 * Math.sin(t + p * 6));
+      if (i === 0) ctx.moveTo(wx2, wy);
+      else ctx.lineTo(wx2, wy);
+    }
+    ctx.stroke();
+
+    // Axis guide
+    ctx.strokeStyle = 'rgba(0, 200, 255, 0.12)';
+    ctx.lineWidth = 0.5;
+    ctx.setLineDash([2, 4]);
+    ctx.beginPath();
+    ctx.moveTo(wx, cy - wh / 2);
+    ctx.lineTo(wx, cy + wh / 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.font = '7px "Courier New"';
+    ctx.fillStyle = 'rgba(0, 200, 255, 0.28)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('BIO-SIG', wx, cy - wh / 2 - 3);
     ctx.restore();
   }
 
@@ -403,11 +620,21 @@
     frameCount++;
     const t = timestamp / 1000;
 
+    // Rare signal-glitch flicker
+    if (Math.random() < 0.004) flickerAlpha = 0.25 + Math.random() * 0.5;
+    else flickerAlpha = Math.min(1, flickerAlpha + 0.18);
+    ctx.globalAlpha = flickerAlpha;
+
     if (state === STATES.IDLE || state === STATES.SCANNING || state === STATES.RESULTS) {
+      drawScreenVignette();
+      drawDepthRings(t);
+      drawTickRing(t);
       drawPulseRings();
-      drawRotatingRing();
+      drawRotatingRings();
       drawCornerBrackets(t);
       drawCrosshairs();
+      drawOrbitalNodes(t);
+      drawWaveform(t);
       drawDataReadout();
     }
 
@@ -425,6 +652,7 @@
       drawLockedState();
     }
 
+    ctx.globalAlpha = 1;
     animFrameId = requestAnimationFrame(drawLoop);
   }
 
