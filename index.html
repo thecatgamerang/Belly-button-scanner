@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="BBS">
+  <meta name="theme-color" content="#00ffb4">
+  <title>Belly Button Scanner</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Splash screen — shown first, required for iOS camera gesture policy -->
+  <div id="splash">
+    <div class="splash-inner">
+      <div class="splash-icon">◎</div>
+      <h1>BELLY BUTTON<br>SCANNER</h1>
+      <p class="splash-sub">Advanced Navel Analysis Technology</p>
+      <p class="splash-tap">Tap anywhere to begin</p>
+    </div>
+  </div>
+
+  <!-- Fullscreen camera feed -->
+  <video id="camera-feed" autoplay playsinline muted></video>
+
+  <!-- AR overlay canvas — drawn on top of video -->
+  <canvas id="ar-overlay"></canvas>
+
+  <!-- All HTML UI elements sit above the canvas -->
+  <div id="ui-layer">
+
+    <!-- Top HUD bar -->
+    <div id="hud-top">
+      <span class="hud-label">BBS v2.1</span>
+      <span class="hud-label" id="hud-status">INITIALIZING</span>
+    </div>
+
+    <!-- Centre scan button -->
+    <div id="scan-button-container">
+      <button id="scan-btn" disabled>SCAN</button>
+    </div>
+
+    <!-- Results panel — slides up from bottom -->
+    <div id="results-panel" class="hidden">
+      <div class="results-header">
+        <span class="results-check">✓</span> SCAN COMPLETE
+      </div>
+      <div class="results-divider"></div>
+      <div id="results-rows"></div>
+      <div class="results-divider"></div>
+      <button id="scan-again-btn">SCAN AGAIN</button>
+    </div>
+
+    <!-- Camera permission error state -->
+    <div id="permission-error" class="hidden">
+      <div class="error-icon">⊘</div>
+      <p>Camera access required.</p>
+      <p class="error-sub" id="error-detail">Please allow camera access in your browser settings.</p>
+      <button id="retry-btn">TRY AGAIN</button>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
