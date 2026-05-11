@@ -112,6 +112,9 @@
   let centerText = '';
   let centerTextAlpha = 0;
   let displayData = { depth: '--', topology: 'STANDBY', lint: '--', symmetry: '--' };
+  let piercingAnalysis = null;
+  let metalScanActive = false;
+  let metalScanEnd = 0;
   let scanTimers = [];
 
   // ─── UTILS ─────────────────────────────────────────────────────
@@ -359,6 +362,25 @@
     ctx.restore();
   }
 
+  function drawMetalScan() {
+    const r = baseRadius() * 1.1;
+    const cx = W / 2, cy = H / 2;
+    const elapsed = metalScanEnd - Date.now();
+    const progress = 1 - elapsed / 600;
+    const alpha = progress < 0.5 ? progress * 2 : (1 - progress) * 2;
+
+    ctx.save();
+    ctx.shadowColor = '#e8d060';
+    ctx.shadowBlur = 22;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(232, 208, 96, ${alpha * 0.85})`;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([]);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function drawCenterText(t) {
     if (!centerText) return;
     centerTextAlpha = Math.min(centerTextAlpha + 0.05, 1);
@@ -393,6 +415,10 @@
       drawScanBar();
       drawProgressArc();
       drawCenterText(t);
+      if (metalScanActive) {
+        if (Date.now() < metalScanEnd) drawMetalScan();
+        else metalScanActive = false;
+      }
     }
 
     if (state === STATES.RESULTS) {
@@ -425,6 +451,98 @@
     els.errorDetail.textContent = detail;
   }
 
+  // ─── PIERCING IMAGE ANALYSIS ───────────────────────────────────
+  function analyzeImageForPiercing() {
+    const video = els.video;
+    if (!video.videoWidth) return null;
+
+    const S = 120; // sample canvas size
+    const offscreen = document.createElement('canvas');
+    offscreen.width = S;
+    offscreen.height = S;
+    const oc = offscreen.getContext('2d', { willReadFrequently: true });
+
+    // Map the scan zone to video-pixel coordinates, accounting for object-fit:cover
+    const vW = video.videoWidth, vH = video.videoHeight;
+    const videoAspect = vW / vH;
+    const screenAspect = W / H;
+    let vidDispW, vidDispH, vidOffX = 0, vidOffY = 0;
+    if (videoAspect > screenAspect) {
+      vidDispH = H;
+      vidDispW = H * videoAspect;
+      vidOffX = (W - vidDispW) / 2;
+    } else {
+      vidDispW = W;
+      vidDispH = W / videoAspect;
+      vidOffY = (H - vidDispH) / 2;
+    }
+
+    const scanR = Math.min(W, H) * CONFIG.baseRadiusRatio * 1.1;
+    const cx = W / 2, cy = H / 2;
+    const scX = vW / vidDispW, scY = vH / vidDispH;
+    const sx = ((cx - scanR) - vidOffX) * scX;
+    const sy = ((cy - scanR) - vidOffY) * scY;
+    const sw = scanR * 2 * scX;
+    const sh = scanR * 2 * scY;
+
+    oc.drawImage(video,
+      Math.max(0, sx), Math.max(0, sy),
+      Math.min(sw, vW - Math.max(0, sx)),
+      Math.min(sh, vH - Math.max(0, sy)),
+      0, 0, S, S);
+
+    const d = oc.getImageData(0, 0, S, S).data;
+
+    // Analyse upper-centre of the zone — belly button piercings sit at the top rim
+    const y1 = 5, y2 = Math.floor(S * 0.58);
+    const x1 = Math.floor(S * 0.22), x2 = Math.ceil(S * 0.78);
+
+    let glintScore = 0;
+    let gemScore = 0;
+
+    for (let py = y1 + 2; py < y2 - 2; py++) {
+      for (let px = x1 + 2; px < x2 - 2; px++) {
+        const i = (py * S + px) * 4;
+        const r = d[i], g = d[i+1], b = d[i+2];
+        const luma = r * 0.299 + g * 0.587 + b * 0.114;
+
+        // Local neighbourhood average (5×5, excluding centre)
+        let nbSum = 0;
+        for (let dy = -2; dy <= 2; dy++) {
+          for (let dx = -2; dx <= 2; dx++) {
+            if (!dx && !dy) continue;
+            const ni = ((py+dy) * S + (px+dx)) * 4;
+            nbSum += d[ni] * 0.299 + d[ni+1] * 0.587 + d[ni+2] * 0.114;
+          }
+        }
+        const nbAvg = nbSum / 24;
+        const localContrast = luma - nbAvg;
+
+        // Sharp local brightness peak → metallic specular glint
+        if (luma > 185 && localContrast > 32) {
+          glintScore += localContrast / 75;
+        }
+
+        // Saturated non-skin colour → gem or coloured jewellery
+        const maxC = Math.max(r, g, b);
+        const minC = Math.min(r, g, b);
+        const sat = maxC > 1 ? (maxC - minC) / maxC : 0;
+        // Exclude typical skin tones (R > G > B, low-to-mid saturation)
+        const isSkinLike = r > g && g > b * 0.75 && sat < 0.42;
+        if (sat > 0.38 && maxC > 90 && !isSkinLike) {
+          gemScore += sat;
+        }
+      }
+    }
+
+    const area = (y2 - y1 - 4) * (x2 - x1 - 4);
+    const normGlint = Math.min(glintScore / 3, 1);
+    const normGem   = Math.min(gemScore / (area * 0.07), 1);
+    const score = Math.min(Math.max(normGlint, normGem * 0.85), 1);
+
+    return { score, normGlint, normGem };
+  }
+
   // ─── SCAN SEQUENCE ─────────────────────────────────────────────
   function clearScanTimers() {
     scanTimers.forEach(clearTimeout);
@@ -433,6 +551,8 @@
 
   function startScan() {
     clearScanTimers();
+    piercingAnalysis = null;
+    metalScanActive = false;
     setState(STATES.SCANNING);
     scanStartTime = Date.now();
     scanPhase = 0;
@@ -444,7 +564,13 @@
 
     scanTimers.push(setTimeout(() => playBeep(880, 0.12), 400));
     scanTimers.push(setTimeout(() => { centerText = 'ANALYZING...'; centerTextAlpha = 0; }, 900));
-    scanTimers.push(setTimeout(() => { centerText = 'DETECTING IMPLANTS...'; centerTextAlpha = 0; }, 1800));
+    scanTimers.push(setTimeout(() => {
+      centerText = 'DETECTING IMPLANTS...';
+      centerTextAlpha = 0;
+      metalScanActive = true;
+      metalScanEnd = Date.now() + 650;
+      piercingAnalysis = analyzeImageForPiercing();
+    }, 1800));
     scanTimers.push(setTimeout(() => { centerText = 'PROCESSING RESULTS...'; centerTextAlpha = 0; }, 2500));
     scanTimers.push(setTimeout(() => completeScan(), CONFIG.scanDuration));
   }
@@ -467,14 +593,31 @@
     const prophecy = pick(DATA.prophecies);
     const rank = pick(DATA.ranks);
     const symmetry = parseFloat(rand(80, 99).toFixed(1));
-    const piercingStatus = weightedRandom(DATA.piercingStatus);
+    // Bias piercing detection weights based on real camera analysis
+    let pw = 35, uw = 63, xw = 2;
+    let signalStrength = null;
+    if (piercingAnalysis !== null) {
+      const s = piercingAnalysis.score;
+      if      (s >= 0.60) { pw = 90; uw =  8; xw = 2; }
+      else if (s >= 0.40) { pw = 75; uw = 23; xw = 2; }
+      else if (s >= 0.22) { pw = 50; uw = 48; xw = 2; }
+      else if (s >= 0.10) { pw = 25; uw = 73; xw = 2; }
+      else                { pw =  8; uw = 90; xw = 2; }
+      // Signal strength shown in results (slightly jittered so it doesn't look algorithmic)
+      signalStrength = Math.round(Math.min(98, Math.max(12, s * 100 + (Math.random() - 0.5) * 8)));
+    }
+    const piercingStatusOptions = [
+      { label: 'Pierced', weight: pw }, { label: 'Unpierced', weight: uw }, { label: 'Unknown', weight: xw },
+    ];
+    const piercingStatus = weightedRandom(piercingStatusOptions);
     const isPierced = piercingStatus === 'Pierced';
     const piercingType      = isPierced ? weightedRandom(DATA.piercingTypes) : null;
     const piercingCondition = isPierced ? pick(DATA.piercingConditions) : null;
     const metalCompat       = isPierced ? weightedRandom(DATA.metalCompatibility) : null;
     const piercingComment   = isPierced ? pick(DATA.piercingComments) : null;
     return { type, score, depth, lint, trait, prophecy, rank, symmetry,
-             piercingStatus, isPierced, piercingType, piercingCondition, metalCompat, piercingComment };
+             piercingStatus, isPierced, piercingType, piercingCondition, metalCompat, piercingComment,
+             signalStrength };
   }
 
   // ─── RESULT IMAGE ──────────────────────────────────────────────
@@ -923,6 +1066,9 @@
       { label: 'DEPTH CLASS',       value: r.depth,            accent: false },
       { label: 'LINT RISK',         value: r.lint,             accent: r.lint === 'Legendary' },
       { label: 'PIERCING STATUS',   value: r.piercingStatus,   accent: r.isPierced },
+      ...(r.signalStrength !== null ? [
+        { label: 'IMPLANT SIGNAL',  value: r.signalStrength + '%', accent: r.signalStrength > 55 },
+      ] : []),
       ...(r.isPierced ? [
         { label: 'PIERCING TYPE',   value: r.piercingType,     accent: false },
         { label: 'CONDITION',       value: r.piercingCondition, accent: false },
