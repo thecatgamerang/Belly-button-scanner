@@ -60,6 +60,35 @@
       'Chief Navigator of the Gut Feeling Division',
       'Rear Admiral (Lower Half)',
     ],
+    piercingStatus: [
+      { label: 'Pierced',   weight: 35 },
+      { label: 'Unpierced', weight: 63 },
+      { label: 'Unknown',   weight: 2  },
+    ],
+    piercingTypes: [
+      { label: 'Belly Bar',        weight: 35 },
+      { label: 'Captive Ring',     weight: 20 },
+      { label: 'Curved Barbell',   weight: 15 },
+      { label: 'Gem Stud',         weight: 15 },
+      { label: 'Shield Piercing',  weight: 8  },
+      { label: 'Multi-Pierced',    weight: 7  },
+    ],
+    piercingConditions: ['Freshly Done', 'Well Healed', 'Vintage', 'Battle-Hardened'],
+    metalCompatibility: [
+      { label: 'High',      weight: 50 },
+      { label: 'Moderate',  weight: 35 },
+      { label: 'Sensitive', weight: 15 },
+    ],
+    piercingComments: [
+      'A fine specimen of navel adornment.',
+      'Metal detected. Humanity enhanced.',
+      'The jewelry and the belly are one.',
+      'Your piercer chose wisely.',
+      'Certified glitter-friendly zone.',
+      'This belly button has seen things.',
+      'The metal sings to the navel gods.',
+      'Structural integrity: enhanced.',
+    ],
   };
 
   // ─── STATE ─────────────────────────────────────────────────────
@@ -414,7 +443,8 @@
     playBeep(660, 0.15);
 
     scanTimers.push(setTimeout(() => playBeep(880, 0.12), 400));
-    scanTimers.push(setTimeout(() => { centerText = 'ANALYZING...'; centerTextAlpha = 0; }, 1500));
+    scanTimers.push(setTimeout(() => { centerText = 'ANALYZING...'; centerTextAlpha = 0; }, 900));
+    scanTimers.push(setTimeout(() => { centerText = 'DETECTING IMPLANTS...'; centerTextAlpha = 0; }, 1800));
     scanTimers.push(setTimeout(() => { centerText = 'PROCESSING RESULTS...'; centerTextAlpha = 0; }, 2500));
     scanTimers.push(setTimeout(() => completeScan(), CONFIG.scanDuration));
   }
@@ -437,7 +467,14 @@
     const prophecy = pick(DATA.prophecies);
     const rank = pick(DATA.ranks);
     const symmetry = parseFloat(rand(80, 99).toFixed(1));
-    return { type, score, depth, lint, trait, prophecy, rank, symmetry };
+    const piercingStatus = weightedRandom(DATA.piercingStatus);
+    const isPierced = piercingStatus === 'Pierced';
+    const piercingType      = isPierced ? weightedRandom(DATA.piercingTypes) : null;
+    const piercingCondition = isPierced ? pick(DATA.piercingConditions) : null;
+    const metalCompat       = isPierced ? weightedRandom(DATA.metalCompatibility) : null;
+    const piercingComment   = isPierced ? pick(DATA.piercingComments) : null;
+    return { type, score, depth, lint, trait, prophecy, rank, symmetry,
+             piercingStatus, isPierced, piercingType, piercingCondition, metalCompat, piercingComment };
   }
 
   // ─── RESULT IMAGE ──────────────────────────────────────────────
@@ -647,9 +684,11 @@
     c.textAlign = 'left';
     c.textBaseline = 'bottom';
     c.fillText('UMBILICUS FOSSA', 8, cy + H * 0.44);
+
+    if (r.isPierced) drawPiercing(c, cx, cy - H * 0.30, W, H, r.piercingType);
   }
 
-  function drawOutieTopography(c, cx, cy, W, H) {
+  function drawOutieTopography(c, cx, cy, W, H, r) {
     // Skin base ellipse
     c.beginPath();
     c.ellipse(cx, cy, W * 0.36, H * 0.42, 0, 0, Math.PI * 2);
@@ -705,6 +744,8 @@
     c.textAlign = 'left';
     c.textBaseline = 'bottom';
     c.fillText('PROTRUDING OMPHALOS', 8, cy + H * 0.44);
+
+    if (r.isPierced) drawPiercing(c, cx, cy - H * 0.26, W, H, r.piercingType);
   }
 
   function drawEnigmaticTopography(c, cx, cy, W, H) {
@@ -743,34 +784,173 @@
     c.fillText('CLASSIFICATION: UNKNOWN', 8, cy + H * 0.44);
   }
 
+  // px, py = piercing anchor point (top of navel rim)
+  function drawPiercing(c, px, py, W, H, type) {
+    const gold = '#e8d060';
+    const silver = '#c8d8e8';
+    c.save();
+    c.shadowBlur = 10;
+    c.shadowColor = gold;
+
+    if (type === 'Belly Bar' || type === 'Curved Barbell') {
+      const barLen = H * 0.16;
+      // Bar shaft
+      c.strokeStyle = silver;
+      c.lineWidth = 1.5;
+      c.setLineDash([]);
+      c.beginPath();
+      c.moveTo(px, py - barLen * 0.5);
+      c.lineTo(px, py + barLen * 0.5);
+      c.stroke();
+      // Top ball
+      c.beginPath();
+      c.arc(px, py - barLen * 0.5, 3.5, 0, Math.PI * 2);
+      c.fillStyle = gold;
+      c.fill();
+      // Bottom ball
+      c.beginPath();
+      c.arc(px, py + barLen * 0.5, 3.5, 0, Math.PI * 2);
+      c.fillStyle = gold;
+      c.fill();
+      // Piercing callout
+      piercingCallout(c, px + 5, py, W, type);
+
+    } else if (type === 'Captive Ring') {
+      const rr = H * 0.09;
+      c.beginPath();
+      c.arc(px, py, rr, Math.PI * 0.15, Math.PI * 1.85);
+      c.strokeStyle = silver;
+      c.lineWidth = 2;
+      c.stroke();
+      // Captive bead
+      c.shadowColor = gold;
+      c.beginPath();
+      c.arc(px, py + rr, 3, 0, Math.PI * 2);
+      c.fillStyle = gold;
+      c.fill();
+      piercingCallout(c, px + rr + 4, py, W, type);
+
+    } else if (type === 'Gem Stud') {
+      const gemColors = ['#ff4d8d', '#4d8dff', '#4dffd4', '#ff8d4d', '#c84dff'];
+      const gemColor = gemColors[Math.floor(Math.random() * gemColors.length)];
+      c.shadowColor = gemColor;
+      c.shadowBlur = 14;
+      c.beginPath();
+      c.arc(px, py, 5, 0, Math.PI * 2);
+      c.fillStyle = gemColor;
+      c.fill();
+      // Sparkle cross
+      c.shadowBlur = 0;
+      c.strokeStyle = 'rgba(255,255,255,0.7)';
+      c.lineWidth = 0.5;
+      c.beginPath();
+      c.moveTo(px - 8, py); c.lineTo(px + 8, py);
+      c.moveTo(px, py - 8); c.lineTo(px, py + 8);
+      c.stroke();
+      piercingCallout(c, px + 8, py, W, type);
+
+    } else if (type === 'Shield Piercing') {
+      // Teardrop/shield shape
+      const sh = H * 0.16, sw = W * 0.06;
+      c.beginPath();
+      c.moveTo(px, py - sh * 0.55);
+      c.lineTo(px + sw, py);
+      c.lineTo(px, py + sh * 0.45);
+      c.lineTo(px - sw, py);
+      c.closePath();
+      c.strokeStyle = silver;
+      c.lineWidth = 1.2;
+      c.stroke();
+      c.fillStyle = 'rgba(200, 216, 232, 0.18)';
+      c.fill();
+      // Inner gem dot
+      c.beginPath();
+      c.arc(px, py, 2.5, 0, Math.PI * 2);
+      c.fillStyle = gold;
+      c.fill();
+      piercingCallout(c, px + sw + 4, py, W, type);
+
+    } else if (type === 'Multi-Pierced') {
+      const offsets = [-W * 0.07, 0, W * 0.07];
+      offsets.forEach((ox, idx) => {
+        const barLen = H * 0.12;
+        c.strokeStyle = silver;
+        c.lineWidth = 1.2;
+        c.beginPath();
+        c.moveTo(px + ox, py - barLen * 0.5);
+        c.lineTo(px + ox, py + barLen * 0.5);
+        c.stroke();
+        c.beginPath();
+        c.arc(px + ox, py - barLen * 0.5, 2.5, 0, Math.PI * 2);
+        c.fillStyle = idx === 1 ? gold : silver;
+        c.fill();
+        c.beginPath();
+        c.arc(px + ox, py + barLen * 0.5, 2.5, 0, Math.PI * 2);
+        c.fillStyle = gold;
+        c.fill();
+      });
+      piercingCallout(c, px + W * 0.07 + 6, py, W, type);
+    }
+
+    c.restore();
+  }
+
+  function piercingCallout(c, x, y, W, label) {
+    const endX = Math.min(x + W * 0.08, W * 0.48);
+    c.save();
+    c.shadowBlur = 0;
+    c.strokeStyle = 'rgba(232, 208, 96, 0.4)';
+    c.lineWidth = 0.8;
+    c.setLineDash([2, 3]);
+    c.beginPath();
+    c.moveTo(x, y);
+    c.lineTo(endX, y);
+    c.stroke();
+    c.setLineDash([]);
+    c.font = '7px "Courier New"';
+    c.fillStyle = 'rgba(232, 208, 96, 0.7)';
+    c.textAlign = 'left';
+    c.textBaseline = 'middle';
+    c.fillText(label.toUpperCase(), endX + 2, y);
+    c.restore();
+  }
+
   function renderResults(r) {
     const isOutie = r.type === 'Outie';
     const rows = [
-      { label: 'BELLY BUTTON TYPE', value: r.type, accent: isOutie },
-      { label: 'NAVEL SCORE', value: `${r.score} / 100`, accent: false },
-      { label: 'DEPTH CLASS', value: r.depth, accent: false },
-      { label: 'LINT RISK', value: r.lint, accent: r.lint === 'Legendary' },
+      { label: 'BELLY BUTTON TYPE', value: r.type,            accent: isOutie },
+      { label: 'NAVEL SCORE',       value: `${r.score} / 100`, accent: false },
+      { label: 'DEPTH CLASS',       value: r.depth,            accent: false },
+      { label: 'LINT RISK',         value: r.lint,             accent: r.lint === 'Legendary' },
+      { label: 'PIERCING STATUS',   value: r.piercingStatus,   accent: r.isPierced },
+      ...(r.isPierced ? [
+        { label: 'PIERCING TYPE',   value: r.piercingType,     accent: false },
+        { label: 'CONDITION',       value: r.piercingCondition, accent: false },
+        { label: 'METAL COMPAT',    value: r.metalCompat,      accent: r.metalCompat === 'Sensitive' },
+      ] : []),
     ];
+
     const blocks = [
-      { label: 'PERSONALITY TRAIT', value: `"${r.trait}"` },
-      { label: 'ANCIENT PROPHECY', value: `"${r.prophecy}"` },
-      { label: 'NAVAL ACADEMY RANK', value: r.rank },
+      { label: 'PERSONALITY TRAIT',   value: `"${r.trait}"` },
+      ...(r.isPierced ? [{ label: 'PIERCING ANALYSIS', value: `"${r.piercingComment}"` }] : []),
+      { label: 'ANCIENT PROPHECY',    value: `"${r.prophecy}"` },
+      { label: 'NAVAL ACADEMY RANK',  value: r.rank },
     ];
 
     let html = '';
 
     rows.forEach((row, i) => {
-      const delay = i * 80;
+      const delay = i * 70;
       html += `<div class="result-row" style="animation-delay:${delay}ms">
         <span class="result-label">${row.label}</span>
         <span class="result-value${row.accent ? ' accent' : ''}">${row.value}</span>
       </div>`;
     });
 
-    html += '<div class="results-divider" style="opacity:0;animation:fadeInUp 0.4s ease 320ms forwards"></div>';
+    html += `<div class="results-divider" style="opacity:0;animation:fadeInUp 0.4s ease ${rows.length * 70}ms forwards"></div>`;
 
     blocks.forEach((block, i) => {
-      const delay = 360 + i * 80;
+      const delay = rows.length * 70 + 40 + i * 70;
       html += `<div class="result-block" style="animation-delay:${delay}ms">
         <span class="result-label">${block.label}</span>
         <span class="result-value">${block.value}</span>
